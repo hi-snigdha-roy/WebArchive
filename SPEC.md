@@ -15,10 +15,14 @@ Two principles decide every trade-off:
 ## Stack
 
 - Next.js (App Router) + TypeScript + Tailwind CSS v4. Developed on Windows.
-- Phases 1–3: everything lives in the browser in IndexedDB via Dexie. Images
-  are stored as Blobs, converted to WebP and resized to 1600px wide.
-- **All data access lives in `lib/store.ts`**, so Phase 4 can swap it for
-  Supabase without touching UI code.
+- Phases 1–3 kept everything in the browser in IndexedDB. **Phase 4 moved it to
+  Supabase**: Postgres for the rows, a private Storage bucket for the
+  screenshots, and Supabase Auth for signing in.
+- **All data access lives in `lib/store.ts`.** That is what made the move a
+  change to one module rather than to every screen: not a single component
+  changed when the storage swapped.
+- Images are still converted to WebP and resized to 1600px wide, now before
+  upload rather than before writing to disk.
 
 ## Data model
 
@@ -64,6 +68,27 @@ interface Shot {
 
 interface Collection { id: string; name: string; shotIds: string[]; createdAt: number; }
 ```
+
+### How it is stored
+
+Postgres uses snake_case and timestamps; the app uses camelCase and epoch
+milliseconds. The translation happens in `lib/store.ts` and nowhere else.
+
+| App | Table | Notes |
+| --- | --- | --- |
+| `Site` | `sites` | `sourceUrl` → `source_url`, `colorRoles` → `color_roles`, `isDemo` → `is_demo` |
+| `Shot` | `shots` | `hasImage` is derived from `image_path` being set |
+| `Collection` | `collections` + `collection_shots` | membership and order live in the join table's `position` |
+| — | `collection_shares` | one row per share link: `token`, `collection_id`, `revoked` |
+
+Every table carries a `user_id` defaulting to `auth.uid()`, and row level
+security is on, so the database itself refuses to return another person's rows.
+No query in the app filters by user: it does not have to.
+
+Screenshots live in a **private** bucket at `{user id}/{shot id}.webp`. Nothing
+is ever served from a public URL. Tiles ask the store for a signed link; those
+requests are gathered into one `createSignedUrls` call, cached in memory, and
+replaced before they expire.
 
 Two additions to the original model, both optional and both back-compatible:
 
@@ -137,6 +162,39 @@ The panel, top to bottom:
 8. **Actions** — Favourite, Add to collection, Open site.
 9. **Delete shot** — a quiet text button at the very bottom, with a confirm.
 
+### Sign in `/login`
+
+Email and password, and nothing else: no way to create an account, and new
+signups are turned off on the project itself. A wrong password says only
+"Email or password is incorrect.", which is the same thing an unknown address
+says, so the page never confirms whether an address has an account.
+
+Every route except `/login` and `/share/[token]` is behind the session check in
+`proxy.ts`, which also refreshes the session on each request. An API route
+answers a signed-out caller with 401 rather than redirecting it to a login page
+it cannot read.
+
+### Settings `/settings`
+
+**Import from this browser** lifts an archive left behind by Phases 1–3 out of
+IndexedDB and into the account, reporting progress as it goes. Which old id
+became which new one is remembered in localStorage, so running it twice adds
+nothing twice. The browser's copy is never deleted; it stays as a fallback.
+
+### Shared collection `/share/[token]`
+
+The one public page. A server component looks the token up with the secret key,
+checks it has not been revoked, and renders that collection's name and its
+pictures. It is read-only, and it deliberately carries none of the surrounding
+archive: no site names, addresses, designers, palettes, fonts or notes, and no
+route to any other collection.
+
+An unknown or revoked token shows "This link is no longer available". Tokens are
+32 random bytes; a lookup that fails costs a fixed half-second whatever the
+reason, and repeated failures from one address are slowed further, so guessing
+is both hopeless and expensive. That counter lives in memory, which suits one
+server — behind several instances each keeps its own tally.
+
 ### Collection page `/collection/[id]`
 
 The collection's name, editable inline, and its shots in their own order. A tile
@@ -146,7 +204,8 @@ leaves its shots in the archive. A link filters the library by the collection
 instead.
 
 Collections are reached from the Collection group in the filter rail, where each
-option carries an arrow through to its page.
+option carries an arrow through to its page. **Create share link** and **Stop
+sharing** live here too.
 
 ### Site page `/site/[id]`
 
@@ -284,7 +343,7 @@ never take data away; importing the same file twice gives duplicates.
   multi-selecting tiles, reorder by drag, collection page); a bookmarklet that
   opens the add flow with the current page's URL and title; a `/api/meta` route
   that fetches a URL's title and og:image to fill the add form.
-- **Phase 4** — move storage to Supabase (Postgres + Storage) through
+- **Phase 4 (done)** — storage moved to Supabase (Postgres + Storage) through
   `store.ts`; sign-in; a one-time import from IndexedDB; a read-only share link
   for a single collection.
 
@@ -296,3 +355,7 @@ never take data away; importing the same file twice gives duplicates.
 - Viewer arrows stay inside the current filtered results.
 - Reloading keeps all data. Nothing breaks with 0 sites or with 500 shots.
 - No console errors, and `npm run build` passes.
+- Signed out, every page redirects to `/login` and no data is readable.
+- A share link shows one collection, read-only; revoking it closes the door.
+- The secret key appears only in `lib/supabase/admin.ts` and never in a browser
+  bundle.

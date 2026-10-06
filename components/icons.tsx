@@ -178,3 +178,17 @@ export const BookmarkIcon = (props: IconProps) => (
     <path d="M7 4h10a1 1 0 0 1 1 1v15l-6-4-6 4V5a1 1 0 0 1 1-1Z" />
   </Icon>
 );
+
+export const SignOutIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M15 17v2a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v2" />
+    <path d="M19 12H10m9 0-3-3m3 3-3 3" />
+  </Icon>
+);
+
+export const SettingsIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 3.5v2m0 13v2M3.5 12h2m13 0h2M6 6l1.5 1.5M16.5 16.5 18 18M18 6l-1.5 1.5M7.5 16.5 6 18" />
+  </Icon>
+);

@@ -11,6 +11,7 @@ import { Confirm } from './modal';
 import { ShotViewer } from './shot-viewer';
 import { TagInput } from './tag-input';
 import { ThemeToggle } from './theme';
+import { LoadError } from './states';
 import { ShotTile } from './tiles';
 import { useToast } from './toast';
 import { Button, ColorChip, IconButton, Select } from './ui';
@@ -33,7 +34,7 @@ import {
 import { copyText, normalizeHex, plural } from '@/lib/utils';
 
 export function SiteScreen({ siteId }: { siteId: string }) {
-  const { site, shots, ready } = useSite(siteId);
+  const { site, shots, ready, error, retry } = useSite(siteId);
   const { sites, collections } = useLibrary();
   const router = useRouter();
   const toast = useToast();
@@ -86,6 +87,7 @@ export function SiteScreen({ siteId }: { siteId: string }) {
     [sites],
   );
 
+  if (error) return <LoadError message={error} onRetry={retry} />;
   if (!ready) return null;
 
   if (!site) {

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AddSiteModal } from './add-site-modal';
 import { BookmarkletModal } from './bookmarklet-modal';
@@ -16,11 +17,14 @@ import {
   PlusIcon,
   SearchIcon,
   SectionsIcon,
+  SettingsIcon,
+  SignOutIcon,
   SitesIcon,
   UploadIcon,
 } from './icons';
 import { MasonryGrid, PLACEHOLDER_MIN_HEIGHT, type MasonryEntry } from './masonry';
 import { ShotViewer } from './shot-viewer';
+import { LoadError, SkeletonGrid } from './states';
 import { ThemeToggle } from './theme';
 import { ShotTile, SiteTile } from './tiles';
 import { Button, IconButton, Menu, MenuItem, Segmented, Select } from './ui';
@@ -36,7 +40,8 @@ import {
   type SortKey,
   type ViewKey,
 } from '@/lib/library';
-import { ensureSeeded, exportArchive, importArchive, useLibrary } from '@/lib/store';
+import { ensureSeeded, exportArchive, forgetCachedUser, importArchive, useLibrary } from '@/lib/store';
+import { supabaseBrowser } from '@/lib/supabase/client';
 import { downloadBlob, plural } from '@/lib/utils';
 import { isImageFile } from '@/lib/image';
 import { useToast } from './toast';
@@ -58,7 +63,7 @@ function useArrivalQuery(): string {
 }
 
 export function LibraryScreen() {
-  const { sites, shots, collections, ready } = useLibrary();
+  const { sites, shots, collections, ready, error, retry } = useLibrary();
   const { filters, actions } = useFilterState();
   const [adding, setAdding] = useState<{ url?: string; name?: string; files?: File[] } | null>(
     null,
@@ -68,6 +73,7 @@ export function LibraryScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const router = useRouter();
   const searchField = useRef<HTMLInputElement>(null);
   const importField = useRef<HTMLInputElement>(null);
   const toast = useToast();
@@ -175,6 +181,13 @@ export function LibraryScreen() {
     return () => window.removeEventListener('paste', onPaste);
   }, [busy]);
 
+  const signOut = useCallback(async () => {
+    await supabaseBrowser().auth.signOut();
+    forgetCachedUser();
+    router.replace('/login');
+    router.refresh();
+  }, [router]);
+
   const exportBackup = useCallback(async () => {
     toast('Preparing backup');
     try {
@@ -279,6 +292,24 @@ export function LibraryScreen() {
                   >
                     <BookmarkIcon />
                     Get the bookmarklet
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      close();
+                      router.push('/settings');
+                    }}
+                  >
+                    <SettingsIcon />
+                    Settings
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      close();
+                      void signOut();
+                    }}
+                  >
+                    <SignOutIcon />
+                    Sign out
                   </MenuItem>
                 </>
               )}
@@ -403,7 +434,11 @@ export function LibraryScreen() {
             </div>
           </div>
 
-          {!ready ? null : entries.length ? (
+          {error ? (
+            <LoadError message={error} onRetry={retry} />
+          ) : !ready ? (
+            <SkeletonGrid />
+          ) : entries.length ? (
             <MasonryGrid entries={entries} />
           ) : sites.length === 0 ? (
             <div className="mx-auto max-w-sm py-24 text-center">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { getShotImage } from './store';
+import { getShotImageUrl } from './store';
 
 /** True once the element has come within a screen or so of the viewport. */
 export function useNearViewport(
@@ -31,33 +31,30 @@ export function useNearViewport(
 }
 
 /**
- * Reads one shot's bytes and hands back an object URL, revoking it on the way
- * out. Pass null to hold off entirely, which is how tiles stay cheap until they
+ * A link to one shot's screenshot. The bucket is private, so this is a signed
+ * URL that the store hands out in batches and refreshes before it expires.
+ * Pass null to hold off entirely, which is how tiles stay cheap until they
  * scroll into view.
  */
 export function useShotImageUrl(shotId: string | null): string | null {
-  const [url, setUrl] = useState<string | null>(null);
+  const [entry, setEntry] = useState<{ id: string | null; url: string | null }>({
+    id: null,
+    url: null,
+  });
 
   useEffect(() => {
-    // Clearing is left to the previous run's cleanup, which also revokes.
     if (!shotId) return;
-    let objectUrl: string | null = null;
-    let cancelled = false;
-
-    void getShotImage(shotId).then((blob) => {
-      if (cancelled || !blob) return;
-      objectUrl = URL.createObjectURL(blob);
-      setUrl(objectUrl);
+    let active = true;
+    void getShotImageUrl(shotId).then((url) => {
+      if (active) setEntry({ id: shotId, url });
     });
-
     return () => {
-      cancelled = true;
-      setUrl(null);
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      active = false;
     };
   }, [shotId]);
 
-  return url;
+  // Never show the previous shot's picture against this one's id.
+  return entry.id === shotId ? entry.url : null;
 }
 
 /** Object URL for a blob we already hold, e.g. a file waiting in the add flow. */

@@ -7,8 +7,10 @@ import { ChevronLeftIcon, CloseIcon, GripIcon, TrashIcon } from './icons';
 import { InlineText } from './inline';
 import { MasonryGrid, PLACEHOLDER_MIN_HEIGHT } from './masonry';
 import { Confirm } from './modal';
+import { ShareControls } from './share-controls';
 import { ShotViewer } from './shot-viewer';
 import { ThemeToggle } from './theme';
+import { LoadError } from './states';
 import { ShotTile } from './tiles';
 import { useToast } from './toast';
 import { Button, IconButton } from './ui';
@@ -25,7 +27,7 @@ import {
 import { cn, plural } from '@/lib/utils';
 
 export function CollectionScreen({ collectionId }: { collectionId: string }) {
-  const { sites, shots, collections, ready } = useLibrary();
+  const { sites, shots, collections, ready, error, retry } = useLibrary();
   const router = useRouter();
   const toast = useToast();
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
@@ -67,6 +69,7 @@ export function CollectionScreen({ collectionId }: { collectionId: string }) {
     [sites],
   );
 
+  if (error) return <LoadError message={error} onRetry={retry} />;
   if (!ready) return null;
 
   if (!collection) {
@@ -162,6 +165,10 @@ export function CollectionScreen({ collectionId }: { collectionId: string }) {
           {plural(rows.length, 'shot')} · drag a tile, or focus its handle and use the arrow keys,
           to reorder
         </p>
+
+        <div className="mt-4">
+          <ShareControls collectionId={collection.id} />
+        </div>
 
         <section className="mt-6">
           {rows.length ? (
